@@ -25,15 +25,44 @@ public class Parser
         return result;
     }
 
-    private List<Gene> filterData(List<Gene> genes)
+    public List<Gene> filterData(List<Gene> genes)
     {
-        var sumLength = 0;
-        genes.ForEach(g => sumLength += g.sequence.Length);
-        var meanLength = sumLength / genes.Count;
+        var longest = 0;
+        foreach(var gene in genes)
+        {
+            if (gene.sequence.Length > longest)
+            {
+                longest = gene.sequence.Length;
+            }
+        }
+        var list = new List<int>(new int[longest + 1]);
+        genes.ForEach(g => list[g.sequence.Length]++);
+        var mostOccuringLength = list.IndexOf(list.Max());
 
-        Console.Out.WriteLine("Average sequence length: " + meanLength.ToString());
+        Console.Out.WriteLine("Most occuring sequence length: " + mostOccuringLength.ToString());
 
-        genes.RemoveAll(g => g.sequence.Length < 220 || g.sequence.Length >= 250);
+        genes.RemoveAll(g => g.sequence.Length != mostOccuringLength);
+
+        return genes;
+    }
+
+    public List<Gene> filterDataByAllignement(List<Gene> genes)
+    {
+        var longest = 0;
+        foreach (var gene in genes)
+        {
+            if (gene.allignedSequence.Length > longest)
+            {
+                longest = gene.allignedSequence.Length;
+            }
+        }
+        var list = new List<int>(new int[longest + 1]);
+        genes.ForEach(g => list[g.allignedSequence.Length]++);
+        var mostOccuringLength = list.IndexOf(list.Max());
+
+        Console.Out.WriteLine("Most occuring sequence length: " + mostOccuringLength.ToString());
+
+        genes.RemoveAll(g => g.allignedSequence.Length != mostOccuringLength);
 
         return genes;
     }

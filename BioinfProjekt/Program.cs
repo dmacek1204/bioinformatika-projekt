@@ -1,8 +1,7 @@
 using System;
+using System.IO;
 using System.Collections.Generic;
 using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace BioinfProjekt
 {
@@ -10,34 +9,50 @@ namespace BioinfProjekt
     {
         static void Main(string[] args)
         {
-            // The code provided will print ‘Hello World’ to the console.
-            // Press Ctrl+F5 (or go to Debug > Start Without Debugging) to run your app.
             Console.WriteLine("Please enter filepath to the data:");
-            var path = Console.ReadLine();
+            var dataPath = Console.ReadLine();
+            Console.WriteLine("Please enter folder path to store result files in:");
+            var resultPath = Console.ReadLine();
             var parser = new Parser();
-            var algorithm = new DistanceAlgorithm();
-            var genes = parser.ParseFile(path);
+            var algorithm = new BioAlgorithms();
+            var genes = parser.ParseFile(dataPath);
 
-        
-            var clusters = new List<List<Gene>>();
+            int acceptableNumberForCluster = Convert.ToInt32(Math.Round(genes.Count() * 12d / 100));
+
+
+            var allignedClusters = new List<List<Gene>>();
             Console.Out.Write("Number of sequences: " + genes.Count());
             var firstCluster = new List<Gene>();
-            clusters.Add(firstCluster);
+            allignedClusters.Add(firstCluster);
             var whileloop = 1;
             var firstPass = true;
-            var lastPassGenesCovered = 0;
 
-            while (clusters.Count() != 3 || whileloop < 20)
+            var allignedByAllGene = genes[0].sequence;
+            for (int j = 1; j < genes.Count; j++)
+            {
+                allignedByAllGene = algorithm.NeedlemanWunschAllignFirst(allignedByAllGene, genes[j].sequence);
+            }
+
+            for (int i = 0; i < genes.Count; i++)
+            {
+                genes[i].allignedSequence = algorithm.NeedlemanWunschAllignFirst(genes[i].sequence, allignedByAllGene);
+            }
+
+            genes = parser.filterDataByAllignement(genes);
+
+            var lastPassGenesCovered = 0;
+            var beforelastPassGenesCovered = 0;
+
+            while (whileloop < 20)
             {
                 //For every gene we have
                 for (int i = 0; i < genes.Count; i++)
                 {
                     var firstGene = genes[i];
                     //If this is the first gene, add it to the first cluster
-                    if (firstPass)
+                    if (firstPass && i == 0)
                     {
-                        clusters[0].Add(genes[i]);
-                        firstPass = false;
+                        allignedClusters[0].Add(genes[i]);
                         continue;
                     }
                     var clusterIndex = 0;
@@ -45,20 +60,23 @@ namespace BioinfProjekt
 
 
                     //For every cluster that we have
-                    for (int j = 0; j < clusters.Count(); j++)
+                    for (int j = 0; j < allignedClusters.Count(); j++)
                     {
                         var clusterDistance = 0;
 
                         //Calculate mean distance from cluster by summing distance from every gene 
                         //in that cluster and dividing it by number of genes in that cluster
-                        for (int k = 0; k < clusters[j].Count(); k++)
+                        for (int k = 0; k < allignedClusters[j].Count(); k++)
                         {
-                            var secondGene = clusters[j][k];
-                            var distance = algorithm.MinDistance(firstGene.sequence, secondGene.sequence);
+                            var secondGene = allignedClusters[j][k];
+                            var distance = algorithm.AllignedDistance(firstGene.allignedSequence, secondGene.allignedSequence);
+
+                            //clusterDistance += distance;
                             clusterDistance += distance;
                         }
 
-                        var meanDistance = clusterDistance / clusters[j].Count();
+                        var meanDistance = clusterDistance / allignedClusters[j].Count();
+
 
                         if (minDistance == 0 || meanDistance < minDistance)
                         {
@@ -69,62 +87,81 @@ namespace BioinfProjekt
 
                     if (minDistance > 12)
                     {
-                        clusters.Add(new List<Gene>());
-                        clusters[clusters.Count() - 1].Add(genes[i]);
+                        allignedClusters.Add(new List<Gene>());
+                        allignedClusters[allignedClusters.Count() - 1].Add(genes[i]);
                     }
                     else
                     {
-                        if (!clusters[clusterIndex].Contains(genes[i]))
+                        if (!firstPass)
                         {
-                            clusters[clusterIndex].Add(genes[i]);
-
+                            foreach (var cluster in allignedClusters)
+                            {
+                                if (cluster.Contains(genes[i]))
+                                {
+                                    cluster.Remove(genes[i]);
+                                }
+                            }
                         }
+                        if (!allignedClusters[clusterIndex].Contains(genes[i]))
+                        {
+                            allignedClusters[clusterIndex].Add(genes[i]);
+                        }                        
                     }
+                    //Console.Out.WriteLine(maxSimilarity);
 
                 }
 
-                clusters = TakeThreeBiggestClusters(clusters);
-                var genesCovered = 0;
-                clusters.ForEach(c => genesCovered += c.Count);
-                if (lastPassGenesCovered == genesCovered) break;
-                lastPassGenesCovered = genesCovered;
+                
+                if (firstPass)
+                {
+                    firstPass = false;
+                }
                 whileloop++;
+                allignedClusters = TakeBiggestClusters(allignedClusters, acceptableNumberForCluster);
+                var genesCovered = 0;
+                allignedClusters.ForEach(c => genesCovered += c.Count);
+                if (lastPassGenesCovered == genesCovered || beforelastPassGenesCovered == genesCovered) break;
+                beforelastPassGenesCovered = lastPassGenesCovered;
+                lastPassGenesCovered = genesCovered;
             }
             
-
-            Console.Out.WriteLine("Number of clusters: " + clusters.Count);
-            for (int i = 0; i < clusters.Count; i++)
-            {
-                Console.Out.WriteLine(i + ". cluster: \n");
-                clusters[i].ForEach(g => Console.Out.WriteLine(g.sequence + "\n"));
-            }
+            WriteClustersToFastaFiles(allignedClusters, resultPath);
+            Console.Out.WriteLine("Done");
             Console.ReadKey();
-
-            // Go to http://aka.ms/dotnet-get-started-console to continue learning how to build a console app! 
+            
         }
 
-        private static List<List<Gene>> TakeThreeBiggestClusters(List<List<Gene>> clusters)
+        private static List<List<Gene>> TakeBiggestClusters(List<List<Gene>> allignedClusters, int numberOfGenes)
         {
-            var first = 0;
-            var second = 0;
-            var third = 0;
-            foreach(var c in clusters)
+            var newAllignedClusters = new List<List<Gene>>();
+            foreach (var c in allignedClusters)
             {
-                if (c.Count > first)
+                if (c.Count() > numberOfGenes)
                 {
-                    first = c.Count;
-                }
-                if (c.Count > second && c.Count < first)
-                {
-                    second = c.Count;
-                }
-                if (c.Count > third && c.Count < second)
-                {
-                    third = c.Count;
+                    newAllignedClusters.Add(c);
                 }
             }
-            clusters = clusters.Where(c => c.Count == first || c.Count == second || c.Count == third).ToList();
-            return clusters;
+            return newAllignedClusters;
+        }
+
+        private static void WriteClustersToFastaFiles(List<List<Gene>> clusters, string resultPath)
+        {
+            Directory.CreateDirectory(resultPath);
+            for(int i = 0; i < clusters.Count; i++)
+            {
+                using (System.IO.StreamWriter file =
+                    new System.IO.StreamWriter(resultPath + "\\cluster" + (i+1).ToString() + ".fasta"))
+                {
+                    var counter = 1;
+                    foreach (var gene in clusters[i])
+                    {
+                        file.WriteLine(">Gene" + counter.ToString());
+                        counter++;
+                        file.WriteLine(gene.sequence);
+                    }
+                }
+            }
+            
         }
     }
 }

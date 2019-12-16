@@ -1,7 +1,6 @@
 C:\Users\Dominik\Desktop\faks\bioinf\repository\BioinfProjekt\BioinfProjekt\bin\Debug\BioinfProjekt.exe.config
 C:\Users\Dominik\Desktop\faks\bioinf\repository\BioinfProjekt\BioinfProjekt\bin\Debug\BioinfProjekt.exe
 C:\Users\Dominik\Desktop\faks\bioinf\repository\BioinfProjekt\BioinfProjekt\bin\Debug\BioinfProjekt.pdb
-C:\Users\Dominik\Desktop\faks\bioinf\repository\BioinfProjekt\BioinfProjekt\obj\Debug\BioinfProjekt.csprojAssemblyReference.cache
 C:\Users\Dominik\Desktop\faks\bioinf\repository\BioinfProjekt\BioinfProjekt\obj\Debug\BioinfProjekt.csproj.CoreCompileInputs.cache
 C:\Users\Dominik\Desktop\faks\bioinf\repository\BioinfProjekt\BioinfProjekt\obj\Debug\BioinfProjekt.exe
 C:\Users\Dominik\Desktop\faks\bioinf\repository\BioinfProjekt\BioinfProjekt\obj\Debug\BioinfProjekt.pdb
