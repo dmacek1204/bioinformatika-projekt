@@ -1,6 +1,7 @@
 using System;
-using System.IO;
 using System.Collections.Generic;
+using System.Diagnostics;
+using System.IO;
 using System.Linq;
 
 namespace BioinfProjekt
@@ -11,157 +12,194 @@ namespace BioinfProjekt
         {
             Console.WriteLine("Please enter filepath to the data:");
             var dataPath = Console.ReadLine();
+
+            Console.WriteLine("Please enter filepath to spoa executable: ");
+            var spoaPath = Console.ReadLine();
+
             Console.WriteLine("Please enter folder path to store result files in:");
             var resultPath = Console.ReadLine();
+
+
             var parser = new Parser();
             var algorithm = new BioAlgorithms();
             var genes = parser.ParseFile(dataPath);
 
-            int acceptableNumberForCluster = Convert.ToInt32(Math.Round(genes.Count() * 12d / 100));
+            var longest = 0;
+            foreach (var gene in genes)
+            {
+                if (gene.sequence.Length > longest)
+                {
+                    longest = gene.sequence.Length;
+                }
+            }
+            var list = new List<int>(new int[longest + 1]);
+            genes.ForEach(g => list[g.sequence.Length]++);
+            var mostOccuringLength = list.IndexOf(list.Max());
+
+            var distance = Math.Ceiling(mostOccuringLength * 3d / 100);
+            var maxDistance = (int)Math.Ceiling(distance * 1.2d * 2);
+
+            int acceptableNumberForCluster = Convert.ToInt32(Math.Round(genes.Count() * 8d / 100));
 
 
-            var allignedClusters = new List<List<Gene>>();
+            var clusters = new List<Cluster>();
             Console.Out.Write("Number of sequences: " + genes.Count());
-            var firstCluster = new List<Gene>();
-            allignedClusters.Add(firstCluster);
-            var whileloop = 1;
+            Console.Out.WriteLine("\n");
+            var firstCluster = new Cluster();
+            clusters.Add(firstCluster);
             var firstPass = true;
 
-            var allignedByAllGene = genes[0].sequence;
-            for (int j = 1; j < genes.Count; j++)
-            {
-                allignedByAllGene = algorithm.NeedlemanWunschAllignFirst(allignedByAllGene, genes[j].sequence);
-            }
-
+            //For every gene we have
             for (int i = 0; i < genes.Count; i++)
             {
-                genes[i].allignedSequence = algorithm.NeedlemanWunschAllignFirst(genes[i].sequence, allignedByAllGene);
+                var firstGene = genes[i];
+                //If this is the first gene, add it to the first cluster
+                if (firstPass && i == 0)
+                {
+                    clusters[0].sequences.Add(genes[i].sequence);
+                    clusters[0].centroid = genes[i].sequence;
+                    continue;
+                }
+                var clusterIndex = -1;
+                var minDistance = 0;
+
+                var validClusters = new List<int>();
+
+
+                //For every cluster that we have
+                for (int j = 0; j < clusters.Count(); j++)
+                {
+                    var clusterDistance = algorithm.LevensteinDistance(firstGene.sequence, clusters[j].centroid);
+
+
+
+                    if (minDistance == 0 || clusterDistance < minDistance)
+                    {
+                        minDistance = clusterDistance;
+                        clusterIndex = j;
+                    }
+                }
+
+                if (minDistance < maxDistance)
+                {
+                    foreach (var cluster in clusters)
+                    {
+                        if (cluster.sequences.Contains(genes[i].sequence))
+                        {
+                            cluster.sequences.Remove(genes[i].sequence);
+                        }
+                    }
+
+                    clusters[clusterIndex].sequences.Add(genes[i].sequence);
+
+                    WriteGenesToFastaFiles(clusters[clusterIndex].sequences, resultPath + "/temp");
+                    clusters[clusterIndex].centroid = CallSpoaForConsensus(resultPath + "/temp/genes.fasta", spoaPath);
+                }
+                else
+                {
+                    clusters.Add(new Cluster());
+                    clusters[clusters.Count() - 1].sequences.Add(genes[i].sequence);
+                    clusters[clusters.Count() - 1].centroid = genes[i].sequence;
+                }
+
             }
+            clusters = TakeBiggestClusters(clusters, acceptableNumberForCluster);
 
-            genes = parser.filterDataByAllignement(genes);
+            var resultList = WriteClustersToFastaFiles(clusters, resultPath, spoaPath);
 
-            var lastPassGenesCovered = 0;
-            var beforelastPassGenesCovered = 0;
-
-            while (whileloop < 20)
+            foreach (var consensus in resultList)
             {
-                //For every gene we have
-                for (int i = 0; i < genes.Count; i++)
-                {
-                    var firstGene = genes[i];
-                    //If this is the first gene, add it to the first cluster
-                    if (firstPass && i == 0)
-                    {
-                        allignedClusters[0].Add(genes[i]);
-                        continue;
-                    }
-                    var clusterIndex = 0;
-                    var minDistance = 0;
-
-
-                    //For every cluster that we have
-                    for (int j = 0; j < allignedClusters.Count(); j++)
-                    {
-                        var clusterDistance = 0;
-
-                        //Calculate mean distance from cluster by summing distance from every gene 
-                        //in that cluster and dividing it by number of genes in that cluster
-                        for (int k = 0; k < allignedClusters[j].Count(); k++)
-                        {
-                            var secondGene = allignedClusters[j][k];
-                            var distance = algorithm.AllignedDistance(firstGene.allignedSequence, secondGene.allignedSequence);
-
-                            //clusterDistance += distance;
-                            clusterDistance += distance;
-                        }
-
-                        var meanDistance = clusterDistance / allignedClusters[j].Count();
-
-
-                        if (minDistance == 0 || meanDistance < minDistance)
-                        {
-                            minDistance = meanDistance;
-                            clusterIndex = j;
-                        }
-                    }
-
-                    if (minDistance > 12)
-                    {
-                        allignedClusters.Add(new List<Gene>());
-                        allignedClusters[allignedClusters.Count() - 1].Add(genes[i]);
-                    }
-                    else
-                    {
-                        if (!firstPass)
-                        {
-                            foreach (var cluster in allignedClusters)
-                            {
-                                if (cluster.Contains(genes[i]))
-                                {
-                                    cluster.Remove(genes[i]);
-                                }
-                            }
-                        }
-                        if (!allignedClusters[clusterIndex].Contains(genes[i]))
-                        {
-                            allignedClusters[clusterIndex].Add(genes[i]);
-                        }                        
-                    }
-                    //Console.Out.WriteLine(maxSimilarity);
-
-                }
-
-                
-                if (firstPass)
-                {
-                    firstPass = false;
-                }
-                whileloop++;
-                allignedClusters = TakeBiggestClusters(allignedClusters, acceptableNumberForCluster);
-                var genesCovered = 0;
-                allignedClusters.ForEach(c => genesCovered += c.Count);
-                if (lastPassGenesCovered == genesCovered || beforelastPassGenesCovered == genesCovered) break;
-                beforelastPassGenesCovered = lastPassGenesCovered;
-                lastPassGenesCovered = genesCovered;
+                Console.Out.Write("Consensus(" + consensus.Length + "):\n");
+                Console.Out.WriteLine(consensus);
+                Console.Out.Write("\n");
             }
-            
-            WriteClustersToFastaFiles(allignedClusters, resultPath);
             Console.Out.WriteLine("Done");
             Console.ReadKey();
-            
+
         }
 
-        private static List<List<Gene>> TakeBiggestClusters(List<List<Gene>> allignedClusters, int numberOfGenes)
+        private static List<Cluster> TakeBiggestClusters(List<Cluster> clusters, int numberOfGenes)
         {
-            var newAllignedClusters = new List<List<Gene>>();
-            foreach (var c in allignedClusters)
+            var newclusters = new List<Cluster>();
+            foreach (var c in clusters)
             {
-                if (c.Count() > numberOfGenes)
+                if (c.sequences.Count() > numberOfGenes)
                 {
-                    newAllignedClusters.Add(c);
+                    newclusters.Add(c);
                 }
             }
-            return newAllignedClusters;
+            return newclusters;
         }
 
-        private static void WriteClustersToFastaFiles(List<List<Gene>> clusters, string resultPath)
+        private static List<string> WriteClustersToFastaFiles(List<Cluster> clusters, string resultPath, string spoaPath)
         {
+            var result = new List<string>();
             Directory.CreateDirectory(resultPath);
-            for(int i = 0; i < clusters.Count; i++)
+            for (int i = 0; i < clusters.Count; i++)
             {
                 using (System.IO.StreamWriter file =
-                    new System.IO.StreamWriter(resultPath + "\\cluster" + (i+1).ToString() + ".fasta"))
+                    new System.IO.StreamWriter(resultPath + "/cluster" + (i + 1).ToString() + ".fasta"))
                 {
                     var counter = 1;
-                    foreach (var gene in clusters[i])
+                    foreach (var sequence in clusters[i].sequences)
                     {
                         file.WriteLine(">Gene" + counter.ToString());
                         counter++;
-                        file.WriteLine(gene.sequence);
+                        file.WriteLine(sequence);
                     }
                 }
+
+                var consensusForCluster = CallSpoaForConsensus(resultPath + "/cluster" + (i + 1).ToString() + ".fasta", spoaPath);
+                result.Add(consensusForCluster);
             }
-            
+
+            return result;
+        }
+
+        private static void WriteGenesToFastaFiles(List<string> sequences, string fileSavePath)
+        {
+            Directory.CreateDirectory(fileSavePath);
+            using (System.IO.StreamWriter file =
+                new System.IO.StreamWriter(fileSavePath + "/genes.fasta"))
+            {
+                var counter = 1;
+                foreach (var sequence in sequences)
+                {
+                    file.WriteLine(">Gene" + counter.ToString());
+                    counter++;
+                    file.WriteLine(sequence);
+                }
+            }
+
+        }
+
+        private static string CallSpoaForConsensus(string pathToFile, string spoaPath)
+        {
+            Process compiler = new Process();
+            compiler.StartInfo.FileName = spoaPath;
+            compiler.StartInfo.Arguments = pathToFile;
+            compiler.StartInfo.UseShellExecute = false;
+            compiler.StartInfo.RedirectStandardOutput = true;
+            compiler.Start();
+
+            string output = compiler.StandardOutput.ReadToEnd();
+
+            compiler.WaitForExit();
+
+            var consensusList = output.Split('\n').ToList();
+
+            var consenesus = "";
+
+            consensusList.ForEach(s =>
+            {
+                var matchReg = "ACTG-";
+                if (s.All(c => matchReg.Contains(c)) && s != "")
+                {
+                    consenesus = s;
+                }
+            });
+
+            return consenesus;
         }
     }
 }

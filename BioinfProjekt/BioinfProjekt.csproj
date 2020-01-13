@@ -43,6 +43,7 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="BioAlgorithms.cs" />
+    <Compile Include="Cluster.cs" />
     <Compile Include="Gene.cs" />
     <Compile Include="Parser.cs" />
     <Compile Include="Program.cs" />
